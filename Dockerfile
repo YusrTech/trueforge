@@ -18,12 +18,12 @@
 # images from the TrueFoundry private registry (builder: node:24-dev, runtime:
 # node:24).
 
-ARG BUILD_BASE_IMAGE=node:24-slim
-ARG RUNTIME_BASE_IMAGE=node:24-slim
+ARG BUILD_BASE_IMAGE=node:24-trixie-slim
+ARG RUNTIME_BASE_IMAGE=node:24-trixie-slim
 
 FROM ${BUILD_BASE_IMAGE} AS base
 # The hardened bases default to uid 65532. Package install must run as root.
-# node:24-slim is already root.
+# node:24-trixie-slim is already root.
 USER root
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
@@ -99,7 +99,7 @@ RUN pnpm install --frozen-lockfile --offline --prod --filter @truefoundry/truefo
 # ---------------------------------------------------------------------------
 # runner: minimal image with prod node_modules + built artifacts.
 # Fresh FROM so a hardened runtime base does not keep the builder toolchain.
-# The default matches the builder, so local builds stay on node:24-slim.
+# The default matches the builder, so local builds stay on node:24-trixie-slim.
 # ---------------------------------------------------------------------------
 FROM ${RUNTIME_BASE_IMAGE} AS runner
 
@@ -129,6 +129,12 @@ COPY --from=frontend-builder /app/packages/frontend/dist ./packages/trueforge/di
 
 WORKDIR /app/packages/trueforge
 
+# The server runs with plain `node`; drop the npm/corepack toolchain bundled in
+# the Docker Hub base (its vendored deps carry CVEs). `rm -rf` keeps this a no-op on
+# the hardened base, which ships none of it.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 # Chart pods run as uid 10001. Debian has groupadd; the hardened base has
 # BusyBox addgroup. Fail loudly if a future base has neither, rather than on a
 # bare "not found".
@@ -141,6 +147,18 @@ RUN if [ -x /usr/sbin/groupadd ]; then \
     else \
       echo "base image has neither groupadd nor addgroup; cannot create uid 10001" >&2; \
       exit 1; \
+    fi
+
+# Drop Debian packages the server never loads (util-linux family, perl,
+# sqlite shared lib) so their unfixable CVEs do not ship. Node needs only
+# libc/libstdc++/libgcc; better-sqlite3 bundles its own SQLite. Runs after user
+# creation (useradd comes from passwd, which does not depend on these). No-op on
+# the hardened base (no dpkg).
+RUN if command -v dpkg >/dev/null 2>&1; then \
+      dpkg --purge --force-depends --force-remove-essential \
+        --force-remove-protected mount util-linux login bsdutils libmount1 \
+        libblkid1 liblastlog2-2 libsmartcols1 libuuid1 perl-base libsqlite3-0 \
+      && rm -rf /var/lib/apt/lists/* /var/cache/apt; \
     fi
 
 EXPOSE 8790
