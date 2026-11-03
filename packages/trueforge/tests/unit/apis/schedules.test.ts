@@ -111,6 +111,7 @@ async function setup(authorizer: Authorizer = new TrueForgeAuthorizer()) {
         listAgentAccess: input => currentAuthorizer.listAgentAccess(input),
         canAccessAgent: input => currentAuthorizer.canAccessAgent(input),
         getPermissions: input => currentAuthorizer.getPermissions(input),
+        canAuthorWork: input => currentAuthorizer.canAuthorWork(input),
       },
     }),
   );
@@ -220,6 +221,7 @@ describe('schedule RBAC', () => {
             : { kind: 'agent_external_ids', agent_external_ids: [] },
         ),
       canAccessAgent: () => Promise.resolve(false),
+      canAuthorWork: () => Promise.resolve(true),
       getPermissions: async ({ resourceType, resourceIds }) => ({
         type: resourceType,
         permissions: Object.fromEntries(resourceIds.map(id => [id, []])),
@@ -415,6 +417,7 @@ describe('create schedule run', () => {
     const denyAll: Authorizer = {
       listAgentAccess: () => Promise.resolve({ kind: 'agent_external_ids', agent_external_ids: [] }),
       canAccessAgent,
+      canAuthorWork: () => Promise.resolve(true),
       getPermissions: async ({ resourceType, resourceIds }) => ({
         type: resourceType,
         permissions: Object.fromEntries(resourceIds.map(id => [id, []])),
@@ -438,6 +441,7 @@ describe('create schedule run', () => {
     setAuthorizer({
       listAgentAccess: () => Promise.resolve({ kind: 'agent_external_ids', agent_external_ids: [] }),
       canAccessAgent,
+      canAuthorWork: () => Promise.resolve(true),
       getPermissions: async ({ resourceType, resourceIds }) => ({
         type: resourceType,
         permissions: Object.fromEntries(resourceIds.map(id => [id, []])),

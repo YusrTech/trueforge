@@ -55,7 +55,13 @@ import { validateAgentSpec } from '../runtime/sessionResources';
 import { honoQueriesToRecord } from '../schemas/deepObjectQuery';
 import { isSessionAgentNameRef, parseListSessionsQuery, type Session } from '../schemas/session';
 import { newId } from '../utils/id';
-import { agentIfAccessible, canReadAgentBoundResource, canReadSession, resolveManagedAgentIds } from './agentAccess';
+import {
+  agentIfAccessible,
+  canReadAgentBoundResource,
+  canReadSession,
+  FORBIDDEN_AUTHOR_WORK,
+  resolveManagedAgentIds,
+} from './agentAccess';
 
 /** Request-reply path a replica serves to cancel a turn it owns. */
 export const SESSIONS_CANCEL_PATH = 'sessions/cancel';
@@ -335,6 +341,9 @@ function createGetOrCreateSessionByExternalIdHandler(
       }
       agent = { type: 'reference', id: named.id, name: named.name };
     } else {
+      if (!(await deps.authorizer.canAuthorWork({ context: requestContext }))) {
+        return c.json({ error: { message: FORBIDDEN_AUTHOR_WORK } }, 403);
+      }
       await validateInlineSessionSpec(deps, {
         c,
         spec: body.agent.spec,
@@ -405,6 +414,9 @@ export function createSessionsRouter(deps: SessionsRouterDeps) {
       return c.json({ data: toWireSession(session.record) }, 201);
     }
 
+    if (!(await deps.authorizer.canAuthorWork({ context: requestContext }))) {
+      return c.json({ error: { message: FORBIDDEN_AUTHOR_WORK } }, 403);
+    }
     await validateInlineSessionSpec(deps, {
       c,
       spec: body.agent.spec,
@@ -493,6 +505,9 @@ export function createSessionsRouter(deps: SessionsRouterDeps) {
     // Inline sessions may replace their agent; named (reference) sessions
     // cannot — the store rejects that with SessionStoreInvariantError → 422 below.
     if (body.agent !== undefined) {
+      if (!(await deps.authorizer.canAuthorWork({ context: requestContext }))) {
+        return c.json({ error: { message: FORBIDDEN_AUTHOR_WORK } }, 403);
+      }
       if (existing.agent.type === 'inline') {
         await validateInlineSessionSpec(deps, {
           c,
